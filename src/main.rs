@@ -24,8 +24,18 @@ fn setup(
     let player_shape = meshes.add(Capsule2d::new(25.0, 50.0));
     let player_material = materials.add(Color::srgba(1.0, 0.25, 0.25, 1.0));
 
-    commands.spawn(Player)
-        .insert(Mesh2d(player_shape))
-        .insert(MeshMaterial2d(player_material))
+    commands.spawn((
+        Player,
+        ( // rendering
+          Mesh2d(player_shape),
+          MeshMaterial2d(player_material)
+        ),
+        ( // physics
+          RigidBody::Dynamic,
+          Collider::capsule(25.0, 50.0),
+          GravityScale(1.0),
+          LinearVelocity::ZERO,
+        ),
+    ))
     ;
 }
