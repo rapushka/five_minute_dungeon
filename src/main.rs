@@ -8,6 +8,8 @@ mod prelude;
 mod physics;
 mod level;
 
+const MAX_SPEED: f32 = 250.0;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -108,6 +110,7 @@ fn move_player(
             match event {
                 MovementAction::Move(direction) => {
                     velocity.x += *direction * acceleration.0 * delta_time;
+                    velocity.x = velocity.x.clamp(-MAX_SPEED, MAX_SPEED);
                 }
                 MovementAction::Jump => {
                     if is_grounded {
