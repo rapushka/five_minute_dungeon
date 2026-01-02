@@ -1,18 +1,23 @@
 use avian2d::math::Scalar;
+use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
+
 use crate::level::spawn_level;
-use crate::physics::character_controller::CharacterControllerBundle;
-use crate::physics::{Grounded, MovementAcceleration, MovementAction};
+use crate::physics::character_controller::*;
+use crate::physics::*;
 use crate::prelude::*;
 
 mod prelude;
 mod physics;
 mod level;
 
-const MAX_SPEED: f32 = 250.0;
+const MAX_SPEED: f32 = 1_500.0;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.build()
+            // fixes "couldn't get swap chain texture"
+            .disable::<PipelinedRenderingPlugin>()
+        )
         .add_plugins(PhysicsPlugins::default().with_length_unit(20.0))
 
         .add_message::<MovementAction>()
@@ -26,7 +31,7 @@ fn main() {
             keyboard_input,
             // TODO: check grounded
             move_player,
-            // TODO: damping
+            damp_linear_movement,
         ).chain())
 
         .run();
@@ -52,8 +57,8 @@ fn spawn_player(
     let shape = meshes.add(Capsule2d::new(12.5, 20.0));
     let material = materials.add(Color::srgb(0.2, 0.7, 0.9));
 
-    let acceleration = 1250.0;
-    let damping = 5.0;
+    let acceleration = 3_000.0;
+    let damping = 10.0;
 
     commands.spawn((
         Player,
@@ -119,5 +124,16 @@ fn move_player(
                 }
             }
         }
+    }
+}
+
+fn damp_linear_movement(
+    mut moving_entities: Query<(&MovementDamping, &mut LinearVelocity)>,
+    time: Res<Time>,
+) {
+    let delta_time = time.delta_secs();
+
+    for (damp, mut velocity) in &mut moving_entities {
+        velocity.x *= 1.0 / (1.0 + damp.0 * delta_time);
     }
 }
