@@ -1,12 +1,25 @@
-use avian2d::prelude::*;
-use bevy::prelude::*;
+use avian2d::math::Scalar;
+use crate::physics::character_controller::CharacterControllerBundle;
+use crate::physics::MovementAction;
+use crate::prelude::*;
+
+mod prelude;
+mod physics;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(PhysicsPlugins::default())
+        .add_plugins(PhysicsPlugins::default().with_length_unit(20.0))
 
-        .add_systems(Startup, setup)
+        .add_message::<MovementAction>()
+
+        .add_systems(Startup, (
+            spawn_camera,
+            spawn_player,
+        ))
+        .add_systems(Update, (
+            keyboard_input,
+        ).chain())
 
         .run();
 }
@@ -14,28 +27,60 @@ fn main() {
 #[derive(Component)]
 struct Player;
 
-fn setup(
+#[derive(Component)]
+struct InputReceiver;
+
+fn spawn_camera(
+    mut commands: Commands,
+) {
+    commands.spawn(Camera2d);
+}
+
+fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    commands.spawn(Camera2d);
+    let shape = meshes.add(Capsule2d::new(12.5, 20.0));
+    let material = materials.add(Color::srgb(0.2, 0.7, 0.9));
 
-    let player_shape = meshes.add(Capsule2d::new(25.0, 50.0));
-    let player_material = materials.add(Color::srgba(1.0, 0.25, 0.25, 1.0));
+    let acceleration = 1250.0;
+    let damping = 5.0;
 
     commands.spawn((
         Player,
-        ( // rendering
-          Mesh2d(player_shape),
-          MeshMaterial2d(player_material)
+        InputReceiver,
+        (   // rendering
+            Mesh2d(shape),
+            MeshMaterial2d(material),
+            Transform::from_xyz(0.0, -100.0, 0.0),
         ),
-        ( // physics
-          RigidBody::Dynamic,
-          Collider::capsule(25.0, 50.0),
-          GravityScale(1.0),
-          LinearVelocity::ZERO,
+        (   // physics
+            CharacterControllerBundle::new(Collider::capsule(12.5, 20.0))
+                .with_movement(acceleration, damping),
+            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
+            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+            ColliderDensity(2.0),
+            GravityScale(1.5),
         ),
-    ))
-    ;
+    ));
+}
+
+fn keyboard_input(
+    mut movement_writer: MessageWriter<MovementAction>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
+    let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
+
+    let horizontal = right as i8 - left as i8;
+    let direction = horizontal as Scalar;
+
+    if direction != 0.0 {
+        movement_writer.write(MovementAction::Move(direction));
+    }
+
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        // TODO: jump
+    }
 }
