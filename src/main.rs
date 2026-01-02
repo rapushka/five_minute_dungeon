@@ -1,10 +1,12 @@
 use avian2d::math::Scalar;
+use crate::level::spawn_level;
 use crate::physics::character_controller::CharacterControllerBundle;
 use crate::physics::MovementAction;
 use crate::prelude::*;
 
 mod prelude;
 mod physics;
+mod level;
 
 fn main() {
     App::new()
@@ -15,6 +17,7 @@ fn main() {
 
         .add_systems(Startup, (
             spawn_camera,
+            spawn_level,
             spawn_player,
         ))
         .add_systems(Update, (
