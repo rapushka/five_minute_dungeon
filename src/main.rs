@@ -1,7 +1,7 @@
 use avian2d::math::Scalar;
 use crate::level::spawn_level;
 use crate::physics::character_controller::CharacterControllerBundle;
-use crate::physics::MovementAction;
+use crate::physics::{Grounded, MovementAcceleration, MovementAction};
 use crate::prelude::*;
 
 mod prelude;
@@ -22,6 +22,9 @@ fn main() {
         ))
         .add_systems(Update, (
             keyboard_input,
+            // TODO: check grounded
+            move_player,
+            // TODO: damping
         ).chain())
 
         .run();
@@ -85,5 +88,33 @@ fn keyboard_input(
 
     if keyboard_input.just_pressed(KeyCode::Space) {
         // TODO: jump
+    }
+}
+
+fn move_player(
+    mut receivers: Query<(
+        &MovementAcceleration,
+        // TODO: jump impulse
+        &mut LinearVelocity,
+        Has<Grounded>,
+    ), With<InputReceiver>>,
+    mut movement_reader: MessageReader<MovementAction>,
+    time: Res<Time>,
+) {
+    let delta_time = time.delta_secs();
+
+    for event in movement_reader.read() {
+        for (acceleration, mut velocity, is_grounded) in &mut receivers {
+            match event {
+                MovementAction::Move(direction) => {
+                    velocity.x += *direction * acceleration.0 * delta_time;
+                }
+                MovementAction::Jump => {
+                    if is_grounded {
+                        // LinearVelocity.y = jump_impulse.0;
+                    }
+                }
+            }
+        }
     }
 }

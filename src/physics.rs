@@ -15,7 +15,7 @@ pub enum MovementAction {
 pub struct Grounded;
 
 #[derive(Component)]
-pub struct MovementAcceleration(Scalar);
+pub struct MovementAcceleration(pub Scalar);
 
 #[derive(Component)]
-pub struct MovementDamping(Scalar);
+pub struct MovementDamping(pub Scalar);
