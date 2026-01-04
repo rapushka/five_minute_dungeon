@@ -2,7 +2,6 @@
 #![allow(clippy::type_complexity)]
 
 use avian2d::math::{Scalar, Vector};
-use bevy::prelude::EaseFunction::QuadraticIn;
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
 
 use crate::level::spawn_level;
@@ -19,7 +18,6 @@ const MOVEMENT_ACCELERATION: Scalar = 3_000.0;
 const MOVEMENT_DAMPING: Scalar = 10.0;
 const JUMP_IMPULSE: Scalar = 600.0;
 const MAX_SLOPE_DEGREE: Scalar = 30.0;
-const GRAVITY_MULTIPLIER: Scalar = 100.0;
 const JUMP_CUT: Scalar = 0.4;
 const FALL_GRAVITY_MULTIPLIER: Scalar = 1.0;
 
@@ -29,7 +27,9 @@ fn main() {
             // fixes "couldn't get swap chain texture"
             .disable::<PipelinedRenderingPlugin>()
         )
-        .add_plugins(PhysicsPlugins::default().with_length_unit(20.0))
+        .add_plugins(PhysicsPlugins::default().with_length_unit(200.0))
+
+        .insert_resource(Gravity(Vector::NEG_Y * 1_000.0))
 
         .add_message::<MovementAction>()
 
@@ -41,10 +41,16 @@ fn main() {
         .add_systems(Update, (
             keyboard_input,
             check_grounded,
+            apply_kinematic_gravity,
             move_player,
-            apply_fall_gravity,
+            apply_fall_gravity, // TODO: remove?
             damp_linear_movement,
         ).chain())
+
+        .add_systems(
+            PhysicsSchedule,
+            kinematic_controller_collisions.in_set(NarrowPhaseSystems::Last),
+        )
 
         .run();
 }
@@ -60,6 +66,9 @@ struct JumpCutMultiplier(pub Scalar);
 
 #[derive(Component)]
 struct FallGravityMultiplier(pub Scalar);
+
+#[derive(Component)]
+struct PhysicsObject;
 
 fn spawn_camera(
     mut commands: Commands,
@@ -84,7 +93,8 @@ fn spawn_player(
         ),
         (   // character controller
             InputReceiver,
-            CharacterControllerBundle::new(Collider::capsule(12.5, 20.0))
+            PhysicsObject,
+            ControllableCharacterBundle::new(Collider::capsule(12.5, 20.0), AvianVec::NEG_Y * 1_500.0) // TODO: isn't this number too big?
                 .with_movement(
                     MOVEMENT_ACCELERATION,
                     MOVEMENT_DAMPING,
@@ -93,13 +103,7 @@ fn spawn_player(
                 ),
             JumpCutMultiplier(JUMP_CUT),
             FallGravityMultiplier(FALL_GRAVITY_MULTIPLIER),
-        ),
-        (   // physics
-            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
-            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-            ColliderDensity(2.0),
-            GravityScale(GRAVITY_MULTIPLIER),
-        ),
+        )
     ));
 }
 
@@ -154,10 +158,10 @@ fn is_flat_enough(rotation: &Rotation, hit: &ShapeHitData, angle: Scalar) -> boo
 }
 
 fn move_player(
-    mut receivers: Query<(
+    mut characters: Query<(
         &MovementAcceleration,
-        &mut LinearVelocity,
         &JumpImpulse,
+        &mut LinearVelocity,
         &JumpCutMultiplier,
         Has<Grounded>,
     ), With<InputReceiver>>,
@@ -167,7 +171,7 @@ fn move_player(
     let delta_time = time.delta_secs();
 
     for event in movement_reader.read() {
-        for (acceleration, mut velocity, jump_impulse, jump_cut, is_grounded) in &mut receivers {
+        for (acceleration, jump_impulse, mut velocity, jump_cut, is_grounded) in &mut characters {
             match event {
                 MovementAction::Move(direction) => {
                     velocity.x += *direction * acceleration.0 * delta_time;
@@ -188,6 +192,17 @@ fn move_player(
     }
 }
 
+fn apply_kinematic_gravity(
+    mut objects: Query<(&KinematicGravity, &mut LinearVelocity)>,
+    time: Res<Time>,
+) {
+    let delta_time = time.delta_secs();
+
+    for (gravity, mut velocity) in &mut objects {
+        velocity.0 += gravity.0 * delta_time;
+    }
+}
+
 fn apply_fall_gravity(
     mut characters: Query<(
         &mut GravityScale,
@@ -195,13 +210,14 @@ fn apply_fall_gravity(
         &FallGravityMultiplier
     ), With<InputReceiver>> // TODO: apply for everything?
 ) {
-    for (mut gravity_scale, velocity, fall_gravity) in &mut characters {
-        gravity_scale.0 = if velocity.y < 0.0 {
-            GRAVITY_MULTIPLIER * fall_gravity.0
-        } else {
-            GRAVITY_MULTIPLIER
-        };
-    }
+    // TODO: need?
+    // for (mut gravity_scale, velocity, fall_gravity) in &mut characters {
+    //     gravity_scale.0 = if velocity.y < 0.0 {
+    //         GRAVITY_MULTIPLIER * fall_gravity.0
+    //     } else {
+    //         GRAVITY_MULTIPLIER
+    //     };
+    // }
 }
 
 fn damp_linear_movement(
