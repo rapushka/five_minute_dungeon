@@ -1,4 +1,4 @@
-use avian2d::math::Scalar;
+use avian2d::math::{Scalar, Vector};
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
 
 use crate::level::spawn_level;
@@ -10,7 +10,11 @@ mod prelude;
 mod physics;
 mod level;
 
-const MAX_SPEED: f32 = 1_500.0;
+const MAX_SPEED: Scalar = 1_500.0;
+const MOVEMENT_ACCELERATION: Scalar = 3_000.0;
+const MOVEMENT_DAMPING: Scalar = 10.0;
+const JUMP_IMPULSE: Scalar = 400.0;
+const MAX_SLOPE_DEGREE: Scalar = 30.0;
 
 fn main() {
     App::new()
@@ -29,7 +33,7 @@ fn main() {
         ))
         .add_systems(Update, (
             keyboard_input,
-            // TODO: check grounded
+            check_grounded,
             move_player,
             damp_linear_movement,
         ).chain())
@@ -57,9 +61,6 @@ fn spawn_player(
     let shape = meshes.add(Capsule2d::new(12.5, 20.0));
     let material = materials.add(Color::srgb(0.2, 0.7, 0.9));
 
-    let acceleration = 3_000.0;
-    let damping = 10.0;
-
     commands.spawn((
         Player,
         InputReceiver,
@@ -70,11 +71,16 @@ fn spawn_player(
         ),
         (   // physics
             CharacterControllerBundle::new(Collider::capsule(12.5, 20.0))
-                .with_movement(acceleration, damping),
+                .with_movement(
+                    MOVEMENT_ACCELERATION,
+                    MOVEMENT_DAMPING,
+                    JUMP_IMPULSE,
+                    MAX_SLOPE_DEGREE.to_radians(),
+                ),
             Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
             Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
             ColliderDensity(2.0),
-            GravityScale(1.5),
+            GravityScale(75.0),
         ),
     ));
 }
@@ -94,15 +100,42 @@ fn keyboard_input(
     }
 
     if keyboard_input.just_pressed(KeyCode::Space) {
-        // TODO: jump
+        movement_writer.write(MovementAction::Jump);
     }
+}
+
+fn check_grounded(
+    mut commands: Commands,
+    mut characters: Query<
+        (Entity, &ShapeHits, &Rotation, Option<&MaxSlopeAngle>),
+        With<InputReceiver>,
+    >,
+) {
+    for (entity, hits, rotation, max_angle) in &mut characters {
+        let is_grounded = hits.iter().any(|hit| {
+            match max_angle {
+                Some(angle) => is_flat_enough(rotation, hit, angle.0),
+                None => true,
+            }
+        });
+
+        if is_grounded {
+            commands.entity(entity).insert(Grounded);
+        } else {
+            commands.entity(entity).remove::<Grounded>();
+        }
+    }
+}
+
+fn is_flat_enough(rotation: &Rotation, hit: &ShapeHitData, angle: Scalar) -> bool {
+    (rotation * -hit.normal2).angle_to(Vector::Y).abs() <= angle
 }
 
 fn move_player(
     mut receivers: Query<(
         &MovementAcceleration,
-        // TODO: jump impulse
         &mut LinearVelocity,
+        &JumpImpulse,
         Has<Grounded>,
     ), With<InputReceiver>>,
     mut movement_reader: MessageReader<MovementAction>,
@@ -111,7 +144,7 @@ fn move_player(
     let delta_time = time.delta_secs();
 
     for event in movement_reader.read() {
-        for (acceleration, mut velocity, is_grounded) in &mut receivers {
+        for (acceleration, mut velocity, jump_impulse, is_grounded) in &mut receivers {
             match event {
                 MovementAction::Move(direction) => {
                     velocity.x += *direction * acceleration.0 * delta_time;
@@ -119,7 +152,7 @@ fn move_player(
                 }
                 MovementAction::Jump => {
                     if is_grounded {
-                        // LinearVelocity.y = jump_impulse.0;
+                        velocity.y = jump_impulse.0;
                     }
                 }
             }

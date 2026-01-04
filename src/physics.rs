@@ -19,3 +19,9 @@ pub struct MovementAcceleration(pub Scalar);
 
 #[derive(Component)]
 pub struct MovementDamping(pub Scalar);
+
+#[derive(Component)]
+pub struct JumpImpulse(pub Scalar);
+
+#[derive(Component)]
+pub struct MaxSlopeAngle(pub Scalar);

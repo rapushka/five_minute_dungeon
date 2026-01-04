@@ -32,8 +32,10 @@ impl CharacterControllerBundle {
         mut self,
         acceleration: Scalar,
         damping: Scalar,
+        jump_impulse: Scalar,
+        max_slope_angle: Scalar,
     ) -> Self {
-        self.movement = MovementBundle::new(acceleration, damping);
+        self.movement = MovementBundle::new(acceleration, damping, jump_impulse, max_slope_angle);
         self
     }
 }
