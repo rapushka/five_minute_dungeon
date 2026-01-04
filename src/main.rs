@@ -1,4 +1,8 @@
+// bevy's query can be big and that's okay
+#![allow(clippy::type_complexity)]
+
 use avian2d::math::{Scalar, Vector};
+use bevy::prelude::EaseFunction::QuadraticIn;
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
 
 use crate::level::spawn_level;
@@ -13,8 +17,11 @@ mod level;
 const MAX_SPEED: Scalar = 1_500.0;
 const MOVEMENT_ACCELERATION: Scalar = 3_000.0;
 const MOVEMENT_DAMPING: Scalar = 10.0;
-const JUMP_IMPULSE: Scalar = 400.0;
+const JUMP_IMPULSE: Scalar = 600.0;
 const MAX_SLOPE_DEGREE: Scalar = 30.0;
+const GRAVITY_MULTIPLIER: Scalar = 100.0;
+const JUMP_CUT: Scalar = 0.4;
+const FALL_GRAVITY_MULTIPLIER: Scalar = 1.0;
 
 fn main() {
     App::new()
@@ -35,6 +42,7 @@ fn main() {
             keyboard_input,
             check_grounded,
             move_player,
+            apply_fall_gravity,
             damp_linear_movement,
         ).chain())
 
@@ -46,6 +54,12 @@ struct Player;
 
 #[derive(Component)]
 struct InputReceiver;
+
+#[derive(Component)]
+struct JumpCutMultiplier(pub Scalar);
+
+#[derive(Component)]
+struct FallGravityMultiplier(pub Scalar);
 
 fn spawn_camera(
     mut commands: Commands,
@@ -63,13 +77,13 @@ fn spawn_player(
 
     commands.spawn((
         Player,
-        InputReceiver,
         (   // rendering
             Mesh2d(shape),
             MeshMaterial2d(material),
             Transform::from_xyz(0.0, -100.0, 0.0),
         ),
-        (   // physics
+        (   // character controller
+            InputReceiver,
             CharacterControllerBundle::new(Collider::capsule(12.5, 20.0))
                 .with_movement(
                     MOVEMENT_ACCELERATION,
@@ -77,20 +91,24 @@ fn spawn_player(
                     JUMP_IMPULSE,
                     MAX_SLOPE_DEGREE.to_radians(),
                 ),
+            JumpCutMultiplier(JUMP_CUT),
+            FallGravityMultiplier(FALL_GRAVITY_MULTIPLIER),
+        ),
+        (   // physics
             Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
             Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
             ColliderDensity(2.0),
-            GravityScale(75.0),
+            GravityScale(GRAVITY_MULTIPLIER),
         ),
     ));
 }
 
 fn keyboard_input(
     mut movement_writer: MessageWriter<MovementAction>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
 ) {
-    let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
-    let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
+    let left = keyboard.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
+    let right = keyboard.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
 
     let horizontal = right as i8 - left as i8;
     let direction = horizontal as Scalar;
@@ -99,8 +117,12 @@ fn keyboard_input(
         movement_writer.write(MovementAction::Move(direction));
     }
 
-    if keyboard_input.just_pressed(KeyCode::Space) {
+    if keyboard.just_pressed(KeyCode::Space) {
         movement_writer.write(MovementAction::Jump);
+    }
+
+    if keyboard.just_released(KeyCode::Space) {
+        movement_writer.write(MovementAction::JumpRelease);
     }
 }
 
@@ -136,6 +158,7 @@ fn move_player(
         &MovementAcceleration,
         &mut LinearVelocity,
         &JumpImpulse,
+        &JumpCutMultiplier,
         Has<Grounded>,
     ), With<InputReceiver>>,
     mut movement_reader: MessageReader<MovementAction>,
@@ -144,7 +167,7 @@ fn move_player(
     let delta_time = time.delta_secs();
 
     for event in movement_reader.read() {
-        for (acceleration, mut velocity, jump_impulse, is_grounded) in &mut receivers {
+        for (acceleration, mut velocity, jump_impulse, jump_cut, is_grounded) in &mut receivers {
             match event {
                 MovementAction::Move(direction) => {
                     velocity.x += *direction * acceleration.0 * delta_time;
@@ -155,8 +178,29 @@ fn move_player(
                         velocity.y = jump_impulse.0;
                     }
                 }
+                MovementAction::JumpRelease => {
+                    if velocity.y > 0.0 {
+                        velocity.y *= jump_cut.0;
+                    }
+                }
             }
         }
+    }
+}
+
+fn apply_fall_gravity(
+    mut characters: Query<(
+        &mut GravityScale,
+        &LinearVelocity,
+        &FallGravityMultiplier
+    ), With<InputReceiver>> // TODO: apply for everything?
+) {
+    for (mut gravity_scale, velocity, fall_gravity) in &mut characters {
+        gravity_scale.0 = if velocity.y < 0.0 {
+            GRAVITY_MULTIPLIER * fall_gravity.0
+        } else {
+            GRAVITY_MULTIPLIER
+        };
     }
 }
 

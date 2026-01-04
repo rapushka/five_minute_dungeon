@@ -8,6 +8,7 @@ pub mod movement_bundle;
 pub enum MovementAction {
     Move(Scalar),
     Jump,
+    JumpRelease,
 }
 
 #[derive(Component)]
