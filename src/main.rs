@@ -49,7 +49,7 @@ fn main() {
 
         .add_systems(
             PhysicsSchedule,
-            kinematic_controller_collisions.in_set(NarrowPhaseSystems::Last),
+            handle_kinematic_collisions::handle_kinematic_collisions.in_set(NarrowPhaseSystems::Last),
         )
 
         .run();
