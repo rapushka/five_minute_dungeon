@@ -2,7 +2,7 @@ use avian2d::prelude::{ColliderOf, Collisions, LinearVelocity, RigidBody, Sensor
 use avian2d::physics_transform::Position;
 use avian2d::math::{Scalar, Vector as AvianVec};
 use crate::physics::MaxSlopeAngle;
-use crate::PhysicsObject;
+use crate::physics::PhysicsObject;
 use crate::prelude::{Query, Res, Time, With, Without};
 
 /// Kinematic bodies do not get pushed by collisions by default,
